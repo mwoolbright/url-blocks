@@ -101,10 +101,10 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         isInNet(myIpAddress(), "10.0.0.0", "255.0.0.0") ||
         isInNet(myIpAddress(), "172.16.0.0", "255.240.0.0") ||
         isInNet(myIpAddress(), "192.168.0.0", "255.255.0.0")) {
-        proxyAddress = "localhost:${process.env.PORT || '8080'}";
+        proxyAddress = "localhost:${process.env.PORT || '8989'}";
     } else {
         // For remote access, use the public IP
-        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}";
+        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8989'}";
     }
 
     // Check for TikTok and Deepseek domains using regex for comprehensive blocking
@@ -216,7 +216,7 @@ const server = http.createServer((req, res) => {
   // If requesting the root path, show a simple status page
   else if (parsedUrl.pathname === '/') {
     const hostIp = process.env.HOST_IP || 'localhost';
-    const port = process.env.PORT || '8080';
+    const port = process.env.PORT || '8989';
     
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(`
@@ -251,7 +251,7 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8989;
 server.listen(PORT, '0.0.0.0', () => {
   const hostIp = process.env.HOST_IP || 'localhost';
   console.log(`Proxy server running on http://0.0.0.0:${PORT}`);
