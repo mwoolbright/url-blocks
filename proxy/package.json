@@ -1,0 +1,13 @@
+{
+    "name": "proxy-pac-server",
+    "version": "1.0.0",
+    "description": "A simple proxy server that serves a PAC file and blocks specified domains",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js"
+    },
+    "engines": {
+      "node": ">=14.0.0"
+    }
+  }
+  
