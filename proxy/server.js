@@ -1,8 +1,20 @@
 const http = require('http');
+const https = require('https');
 const url = require('url');
+const fs = require('fs');
+const express = require('express');
+const path = require('path');
 
-// Define port as a constant to use throughout the code
+// Define constants for configuration
 const DEFAULT_PORT = process.env.PORT || 3000;
+const DEFAULT_HTTPS_PORT = process.env.HTTPS_PORT || 3443;
+const DOMAIN_NAME = process.env.DOMAIN_NAME || 'yourdomain.com';
+
+// Create Express app for handling requests
+const app = express();
+
+// Allow dotfiles - required for Let's Encrypt .well-known/acme-challenge verification
+app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'allow' }));
 
 // Your PAC file content as a string with dynamic proxy address determination
 const pacFileContent = `function FindProxyForURL(url, host) {
@@ -93,8 +105,10 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         "heikickgn.com"
     ];
 
-    // Determine the correct proxy address based on the client's location
+    // Determine the correct proxy address based on the client's location and protocol
     var proxyAddress;
+    var isSecure = url.substring(0, 6) === 'https:';
+    var proxyPort = isSecure ? ${DEFAULT_HTTPS_PORT} : ${DEFAULT_PORT};
     
     // Check if accessing locally
     if (isPlainHostName(host) || 
@@ -104,10 +118,10 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         isInNet(myIpAddress(), "10.0.0.0", "255.0.0.0") ||
         isInNet(myIpAddress(), "172.16.0.0", "255.240.0.0") ||
         isInNet(myIpAddress(), "192.168.0.0", "255.255.0.0")) {
-        proxyAddress = "localhost:${DEFAULT_PORT}";
+        proxyAddress = "localhost:" + proxyPort;
     } else {
-        // For remote access, use the public IP
-        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${DEFAULT_PORT}";
+        // For remote access, use the domain name or IP
+        proxyAddress = "${DOMAIN_NAME}:" + proxyPort;
     }
 
     // Check for TikTok and Deepseek domains using regex for comprehensive blocking
@@ -204,58 +218,129 @@ const blockedPageHTML = `
 </html>
 `;
 
-// Create a simple HTTP server
-const server = http.createServer((req, res) => {
-  const parsedUrl = url.parse(req.url, true);
-  
-  // If requesting the PAC file
-  if (parsedUrl.pathname === '/proxy.pac') {
-    res.writeHead(200, { 
-      'Content-Type': 'application/x-ns-proxy-autoconfig',
-      'Cache-Control': 'max-age=300' // Cache for 5 minutes
-    });
-    res.end(pacFileContent);
-  } 
-  // If requesting the root path, show a simple status page
-  else if (parsedUrl.pathname === '/') {
-    const hostIp = process.env.HOST_IP || 'localhost';
-    
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Proxy Server Status</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-          .status { padding: 15px; background-color: #d4edda; border-radius: 4px; color: #155724; }
-          h1 { color: #333; }
-          code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
-        </style>
-      </head>
-      <body>
-        <h1>Proxy Server Status</h1>
-        <div class="status">
-          <p>✅ Proxy server is running</p>
-          <p>PAC file is available at: <code>http://${hostIp}:${DEFAULT_PORT}/proxy.pac</code></p>
-          <p>Server configured with HOST_IP: <code>${hostIp}</code></p>
-        </div>
-        <p>To use this proxy, configure your browser to use the PAC file URL above.</p>
-        <p>For local testing, use: <code>http://localhost:${DEFAULT_PORT}/proxy.pac</code></p>
-      </body>
-      </html>
-    `);
-  }
-  // For all other requests, return blocked message
-  else {
-    res.writeHead(403, { 'Content-Type': 'text/html' });
-    res.end(blockedPageHTML);
-  }
+// Handle requests for the PAC file
+app.get('/proxy.pac', (req, res) => {
+  res.set('Content-Type', 'application/x-ns-proxy-autoconfig');
+  res.set('Cache-Control', 'max-age=300');
+  res.send(pacFileContent);
 });
 
-server.listen(DEFAULT_PORT, '0.0.0.0', () => {
-  const hostIp = process.env.HOST_IP || 'localhost';
-  console.log(`Proxy server running on http://0.0.0.0:${DEFAULT_PORT}`);
-  console.log(`PAC file available at http://${hostIp}:${DEFAULT_PORT}/proxy.pac`);
-  console.log(`For local testing, use: http://localhost:${DEFAULT_PORT}/proxy.pac`);
+// Handle requests for the root path
+app.get('/', (req, res) => {
+  const httpsEnabled = fs.existsSync(`/etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem`);
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Proxy Server Status</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        .status { padding: 15px; background-color: #d4edda; border-radius: 4px; color: #155724; margin-bottom: 15px; }
+        .warning { padding: 15px; background-color: #fff3cd; border-radius: 4px; color: #856404; margin-bottom: 15px; }
+        h1 { color: #333; }
+        code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+      </style>
+    </head>
+    <body>
+      <h1>Proxy Server Status</h1>
+      <div class="status">
+        <p>✅ HTTP proxy server is running</p>
+        ${httpsEnabled ? '<p>✅ HTTPS proxy server is running with Let\'s Encrypt</p>' : '<p>⚠️ HTTPS proxy server is not running (Let\'s Encrypt certificates not found)</p>'}
+      </div>
+      
+      <h2>Configuration</h2>
+      <table>
+        <tr>
+          <th>Service</th>
+          <th>URL</th>
+        </tr>
+        <tr>
+          <td>PAC File (HTTP)</td>
+          <td><code>http://${DOMAIN_NAME}:${DEFAULT_PORT}/proxy.pac</code></td>
+        </tr>
+        ${httpsEnabled ? `
+        <tr>
+          <td>PAC File (HTTPS)</td>
+          <td><code>https://${DOMAIN_NAME}:${DEFAULT_HTTPS_PORT}/proxy.pac</code></td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td>Local Testing</td>
+          <td><code>http://localhost:${DEFAULT_PORT}/proxy.pac</code></td>
+        </tr>
+      </table>
+      
+      <h2>Usage Instructions</h2>
+      <p>To use this proxy, configure your browser to use the PAC file URL from the table above.</p>
+      
+      ${!httpsEnabled ? `
+      <div class="warning">
+        <p><strong>Warning:</strong> HTTPS support is not enabled. To enable HTTPS with Let's Encrypt:</p>
+        <ol>
+          <li>Make sure this server is accessible from the internet on port 80</li>
+          <li>Install Certbot: <code>sudo apt-get update && sudo apt-get install certbot</code></li>
+          <li>Obtain certificate: <code>sudo certbot certonly --webroot -w ${path.join(__dirname, 'public')} -d ${DOMAIN_NAME}</code></li>
+          <li>Restart the server</li>
+        </ol>
+      </div>
+      ` : ''}
+    </body>
+    </html>
+  `);
 });
+
+// For all other requests, return blocked message
+app.use((req, res) => {
+  res.status(403).send(blockedPageHTML);
+});
+
+// Create HTTP server
+const httpServer = http.createServer(app);
+
+// Start HTTP server
+httpServer.listen(DEFAULT_PORT, '0.0.0.0', () => {
+  console.log(`HTTP proxy server running on http://0.0.0.0:${DEFAULT_PORT}`);
+  console.log(`PAC file available at http://${DOMAIN_NAME}:${DEFAULT_PORT}/proxy.pac`);
+});
+
+// Try to load Let's Encrypt certificates if they exist
+try {
+  const certPath = `/etc/letsencrypt/live/${DOMAIN_NAME}`;
+  const sslOptions = {
+    key: fs.readFileSync(`${certPath}/privkey.pem`),
+    cert: fs.readFileSync(`${certPath}/fullchain.pem`),
+    ca: fs.readFileSync(`${certPath}/chain.pem`)
+  };
+  
+  // Create HTTPS server with Let's Encrypt certificates
+  const httpsServer = https.createServer(sslOptions, app);
+  httpsServer.listen(DEFAULT_HTTPS_PORT, '0.0.0.0', () => {
+    console.log(`HTTPS proxy server running on https://0.0.0.0:${DEFAULT_HTTPS_PORT}`);
+    console.log(`Using Let's Encrypt certificates for ${DOMAIN_NAME}`);
+  });
+  
+  // Set up certificate auto-reload
+  fs.watch(certPath, (eventType, filename) => {
+    if (filename) {
+      console.log(`Certificate file changed: ${filename}`);
+      try {
+        const newOptions = {
+          key: fs.readFileSync(`${certPath}/privkey.pem`),
+          cert: fs.readFileSync(`${certPath}/fullchain.pem`),
+          ca: fs.readFileSync(`${certPath}/chain.pem`)
+        };
+        httpsServer.setSecureContext(newOptions);
+        console.log('Updated SSL certificates successfully');
+      } catch (error) {
+        console.error('Error updating SSL certificates:', error);
+      }
+    }
+  });
+} catch (error) {
+  console.log('HTTPS server not started: Let\'s Encrypt certificates not found');
+  console.log(`To obtain certificates, run: certbot certonly --webroot -w ${path.join(__dirname, 'public')} -d ${DOMAIN_NAME}`);
+}
