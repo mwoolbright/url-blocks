@@ -1,7 +1,7 @@
 const http = require('http');
 const url = require('url');
 
-// Your PAC file content as a string
+// Your PAC file content as a string with dynamic proxy address determination
 const pacFileContent = `function FindProxyForURL(url, host) {
     // List of domains to block
     var blockedDomains = [
@@ -90,12 +90,29 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         "heikickgn.com"
     ];
 
+    // Determine the correct proxy address based on the client's location
+    var proxyAddress;
+    
+    // Check if accessing locally
+    if (isPlainHostName(host) || 
+        dnsDomainIs(host, "localhost") || 
+        dnsDomainIs(host, "127.0.0.1") ||
+        isInNet(myIpAddress(), "127.0.0.0", "255.0.0.0") ||
+        isInNet(myIpAddress(), "10.0.0.0", "255.0.0.0") ||
+        isInNet(myIpAddress(), "172.16.0.0", "255.240.0.0") ||
+        isInNet(myIpAddress(), "192.168.0.0", "255.255.0.0")) {
+        proxyAddress = "localhost:${process.env.PORT || '8080'}";
+    } else {
+        // For remote access, use the public IP
+        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}";
+    }
+
     // Check for TikTok and Deepseek domains using regex for comprehensive blocking
     if (/(\.|^)deepseek\.com$/i.test(host) || 
         /(\.|^)tiktok(v|cdn)?\.com$/i.test(host) || 
         /(\.|^)byte(oversea|dance|glb|img)\.com$/i.test(host) ||
         /(\.|^)musical\.ly$/i.test(host)) {
-        return "PROXY ${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}";
+        return "PROXY " + proxyAddress;
     }
     
     // Special domains that need more thorough blocking with pattern matching
@@ -114,7 +131,7 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         shExpMatch(host, "*.ipstatp.*") ||
         shExpMatch(host, "*.ttcdn*") ||
         shExpMatch(host, "*.snssdk.*")) {
-        return "PROXY ${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}";
+        return "PROXY " + proxyAddress;
     }
 
     // Check if the host matches any of the other blocked domains
@@ -122,7 +139,7 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         if (dnsDomainIs(host, blockedDomains[i]) || 
             host == blockedDomains[i] || 
             shExpMatch(host, "*." + blockedDomains[i])) {
-            return "PROXY ${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}";
+            return "PROXY " + proxyAddress;
         }
     }
 
@@ -198,6 +215,9 @@ const server = http.createServer((req, res) => {
   } 
   // If requesting the root path, show a simple status page
   else if (parsedUrl.pathname === '/') {
+    const hostIp = process.env.HOST_IP || 'localhost';
+    const port = process.env.PORT || '8080';
+    
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(`
       <!DOCTYPE html>
@@ -215,9 +235,11 @@ const server = http.createServer((req, res) => {
         <h1>Proxy Server Status</h1>
         <div class="status">
           <p>✅ Proxy server is running</p>
-          <p>PAC file is available at: <code>http://${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8080'}/proxy.pac</code></p>
+          <p>PAC file is available at: <code>http://${hostIp}:${port}/proxy.pac</code></p>
+          <p>Server configured with HOST_IP: <code>${hostIp}</code></p>
         </div>
         <p>To use this proxy, configure your browser to use the PAC file URL above.</p>
+        <p>For local testing, use: <code>http://localhost:${port}/proxy.pac</code></p>
       </body>
       </html>
     `);
@@ -231,6 +253,8 @@ const server = http.createServer((req, res) => {
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
+  const hostIp = process.env.HOST_IP || 'localhost';
   console.log(`Proxy server running on http://0.0.0.0:${PORT}`);
-  console.log(`PAC file available at http://0.0.0.0:${PORT}/proxy.pac`);
+  console.log(`PAC file available at http://${hostIp}:${PORT}/proxy.pac`);
+  console.log(`For local testing, use: http://localhost:${PORT}/proxy.pac`);
 });
