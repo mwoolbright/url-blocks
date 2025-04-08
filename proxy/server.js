@@ -1,6 +1,9 @@
 const http = require('http');
 const url = require('url');
 
+// Define port as a constant to use throughout the code
+const DEFAULT_PORT = process.env.PORT || 3000;
+
 // Your PAC file content as a string with dynamic proxy address determination
 const pacFileContent = `function FindProxyForURL(url, host) {
     // List of domains to block
@@ -101,10 +104,10 @@ const pacFileContent = `function FindProxyForURL(url, host) {
         isInNet(myIpAddress(), "10.0.0.0", "255.0.0.0") ||
         isInNet(myIpAddress(), "172.16.0.0", "255.240.0.0") ||
         isInNet(myIpAddress(), "192.168.0.0", "255.255.0.0")) {
-        proxyAddress = "localhost:${process.env.PORT || '8989'}";
+        proxyAddress = "localhost:${DEFAULT_PORT}";
     } else {
         // For remote access, use the public IP
-        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${process.env.PORT || '8989'}";
+        proxyAddress = "${process.env.HOST_IP || 'localhost'}:${DEFAULT_PORT}";
     }
 
     // Check for TikTok and Deepseek domains using regex for comprehensive blocking
@@ -216,7 +219,6 @@ const server = http.createServer((req, res) => {
   // If requesting the root path, show a simple status page
   else if (parsedUrl.pathname === '/') {
     const hostIp = process.env.HOST_IP || 'localhost';
-    const port = process.env.PORT || '8989';
     
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(`
@@ -235,11 +237,11 @@ const server = http.createServer((req, res) => {
         <h1>Proxy Server Status</h1>
         <div class="status">
           <p>✅ Proxy server is running</p>
-          <p>PAC file is available at: <code>http://${hostIp}:${port}/proxy.pac</code></p>
+          <p>PAC file is available at: <code>http://${hostIp}:${DEFAULT_PORT}/proxy.pac</code></p>
           <p>Server configured with HOST_IP: <code>${hostIp}</code></p>
         </div>
         <p>To use this proxy, configure your browser to use the PAC file URL above.</p>
-        <p>For local testing, use: <code>http://localhost:${port}/proxy.pac</code></p>
+        <p>For local testing, use: <code>http://localhost:${DEFAULT_PORT}/proxy.pac</code></p>
       </body>
       </html>
     `);
@@ -251,10 +253,9 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8989;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(DEFAULT_PORT, '0.0.0.0', () => {
   const hostIp = process.env.HOST_IP || 'localhost';
-  console.log(`Proxy server running on http://0.0.0.0:${PORT}`);
-  console.log(`PAC file available at http://${hostIp}:${PORT}/proxy.pac`);
-  console.log(`For local testing, use: http://localhost:${PORT}/proxy.pac`);
+  console.log(`Proxy server running on http://0.0.0.0:${DEFAULT_PORT}`);
+  console.log(`PAC file available at http://${hostIp}:${DEFAULT_PORT}/proxy.pac`);
+  console.log(`For local testing, use: http://localhost:${DEFAULT_PORT}/proxy.pac`);
 });
