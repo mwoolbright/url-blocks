@@ -2,9 +2,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Copy package.json first to leverage Docker caching
+COPY package.json .
+
+# Install dependencies from package.json
+RUN npm install
+
 # Copy application files
 COPY server.js .
-COPY package.json .
+COPY etc /etc
 
 # Create public directory for Let's Encrypt verification
 RUN mkdir -p public/.well-known/acme-challenge
@@ -13,9 +19,6 @@ RUN mkdir -p public/.well-known/acme-challenge
 ENV PORT=3000
 ENV HTTPS_PORT=3443
 ENV DOMAIN_NAME=yourdomain.com
-
-# Install dependencies
-RUN npm install express
 
 # Create volume for Let's Encrypt certificates
 VOLUME ["/etc/letsencrypt"]

@@ -1,0 +1,4 @@
+#ignore public folder
+public/
+#ignore cert files
+*.pem
